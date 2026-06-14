@@ -11,6 +11,7 @@ namespace {
 
 constexpr ULONGLONG kCatslockDoubleTapMs = 500;
 constexpr wchar_t kCatslockToggleEventName[] = L"CatslockToggle";
+constexpr wchar_t kCatslockInstanceMutexName[] = L"CatslockInstance";
 
 enum class CatslockState {
     Idle,
@@ -22,6 +23,7 @@ enum class CatslockState {
 
 HHOOK g_keyboardHook = nullptr;
 HANDLE g_toggleEvent = nullptr;
+HANDLE g_instanceMutex = nullptr;
 std::atomic<CatslockState> g_state{CatslockState::Idle};
 std::atomic<ULONGLONG> g_lastCapsLockDownTick{0};
 std::atomic<int> g_capsLockCorrectionEvents{0};
@@ -34,6 +36,25 @@ std::filesystem::path CatslockStatePath() {
     }
 
     return std::filesystem::path(tempPath) / L"catslock.state";
+}
+
+std::filesystem::path CatslockLogPath() {
+    wchar_t tempPath[MAX_PATH] = {};
+    DWORD length = GetTempPathW(MAX_PATH, tempPath);
+    if (length == 0 || length >= MAX_PATH) {
+        return std::filesystem::path(L"catslock.log");
+    }
+
+    return std::filesystem::path(tempPath) / L"catslock.log";
+}
+
+void LogCatslock(const std::string& message) {
+    std::ofstream logFile(CatslockLogPath(), std::ios::app);
+    if (!logFile) {
+        return;
+    }
+
+    logFile << GetTickCount64() << " " << message << '\n';
 }
 
 bool IsCatslockOnState(CatslockState state) {
@@ -91,6 +112,7 @@ bool ReadCatslockRequestedState(bool* enabled) {
 void TransitionCatslock(CatslockState nextState) {
     g_state.store(nextState, std::memory_order_release);
     WriteCatslockState(nextState);
+    LogCatslock(std::string("state=") + CatslockStateName(nextState));
 }
 
 void CorrectCapsLockToggleState() {
@@ -108,6 +130,9 @@ void CorrectCapsLockToggleState() {
     g_capsLockCorrectionEvents.store(2, std::memory_order_release);
     if (SendInput(2, inputs, sizeof(INPUT)) != 2) {
         g_capsLockCorrectionEvents.store(0, std::memory_order_release);
+        LogCatslock("capslock-correction=failed");
+    } else {
+        LogCatslock("capslock-correction=sent");
     }
 }
 
@@ -180,9 +205,11 @@ void WatchCatslockToggleEvent() {
     while (true) {
         DWORD waitResult = WaitForSingleObject(g_toggleEvent, INFINITE);
         if (waitResult != WAIT_OBJECT_0) {
+            LogCatslock("toggle-event-wait=failed");
             continue;
         }
 
+        LogCatslock("toggle-event=signaled");
         bool enabled = false;
         if (ReadCatslockRequestedState(&enabled)) {
             SetCatslockEnabled(enabled);
@@ -226,22 +253,43 @@ HANDLE CreateCatslockToggleEvent() {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    LogCatslock("startup");
+
+    g_instanceMutex = CreateMutexW(nullptr, TRUE, kCatslockInstanceMutexName);
+    if (g_instanceMutex == nullptr) {
+        MessageBoxW(nullptr, L"Failed to create CatslockInstance mutex.", L"Catslock", MB_ICONERROR);
+        LogCatslock("instance-mutex=create-failed");
+        return 1;
+    }
+
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        LogCatslock("instance-mutex=already-running");
+        CloseHandle(g_instanceMutex);
+        return 0;
+    }
+
     WriteCatslockState(CatslockState::Idle);
 
     g_toggleEvent = CreateCatslockToggleEvent();
     if (g_toggleEvent == nullptr) {
         MessageBoxW(nullptr, L"Failed to create CatslockToggle event.", L"Catslock", MB_ICONERROR);
+        LogCatslock("toggle-event=create-failed");
+        CloseHandle(g_instanceMutex);
         return 1;
     }
+    LogCatslock("toggle-event=created");
 
     std::thread(WatchCatslockToggleEvent).detach();
 
     g_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, CatslockKeyboardProc, instance, 0);
     if (g_keyboardHook == nullptr) {
         MessageBoxW(nullptr, L"Failed to install Catslock keyboard hook.", L"Catslock", MB_ICONERROR);
+        LogCatslock("keyboard-hook=install-failed");
         CloseHandle(g_toggleEvent);
+        CloseHandle(g_instanceMutex);
         return 1;
     }
+    LogCatslock("keyboard-hook=installed");
 
     MSG message = {};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
@@ -251,5 +299,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     UnhookWindowsHookEx(g_keyboardHook);
     CloseHandle(g_toggleEvent);
+    ReleaseMutex(g_instanceMutex);
+    CloseHandle(g_instanceMutex);
+    LogCatslock("shutdown");
     return 0;
 }

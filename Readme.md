@@ -31,9 +31,18 @@ Start the utility:
 .\build-clang\catslock.exe
 ```
 
+Or build and launch it as a separate process:
+
+```powershell
+.\r.cmd
+```
+
 The executable installs a `WH_KEYBOARD_LL` global keyboard hook and creates the
 named event `CatslockToggle`. Catslock runs a standard Win32 message pump on the
 main thread so the low-level keyboard hook remains active.
+
+Catslock is single-instance. If `catslock.exe` is already running, `r.cmd` will
+not start a duplicate process.
 
 ## Use
 
@@ -93,6 +102,19 @@ CATSLOCK_OFF
 
 `catslock.ps1` treats `CATSLOCK_ON` and `FIRST_TAP_OFF` as on. All other known
 states are reported as off.
+
+## Diagnostics
+
+Catslock writes a small diagnostic log to:
+
+```text
+%TEMP%\catslock.log
+```
+
+The log records startup, hook installation, named-event signals, state
+transitions, and CapsLock correction attempts. If Catslock appears not to work,
+first check that exactly one `catslock.exe` process is running and inspect this
+log.
 
 ## Mermaid Diagram
 
