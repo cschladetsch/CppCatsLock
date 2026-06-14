@@ -2,23 +2,26 @@ I built Catslock: a small standalone Windows utility that turns CapsLock into a 
 
 Double-tap CapsLock within 500 ms and Catslock turns on. While it is active, all keyboard input is silently swallowed by a low-level Windows keyboard hook. Double-tap CapsLock again to turn it off.
 
-It is a brilliant systems programming exercise because the obvious version is not quite enough to work reliably out of the box. The details matter.
+It sounds simple, but it turns into a useful little systems programming exercise because the obvious version is not enough to work reliably out of the box.
 
-The implementation is intentionally small:
+The Windows implementation includes:
 
 - C++ `WH_KEYBOARD_LL` global hook via `SetWindowsHookEx`
 - Win32 message pump to keep the hook alive
 - `requireAdministrator` UAC manifest for reliable global hook behavior
 - CapsLock double-tap detection with `GetTickCount64`
 - Physical CapsLock toggle correction when Catslock activates
+- Single-instance guard so multiple hooks do not fight each other
 - Simple state machine: `IDLE -> FIRST_TAP -> CATSLOCK_ON -> FIRST_TAP_OFF -> CATSLOCK_OFF`
-- State written to `%TEMP%\catslock.state`
-- PowerShell helper, `catslock.ps1`, for querying or forcing state from any terminal
-- Named event, `CatslockToggle`, with a relaxed security descriptor so non-admin terminals can signal the elevated C++ process out-of-band
+- State file at `%TEMP%\catslock.state`
+- Diagnostic log at `%TEMP%\catslock.log`
+- PowerShell helper, `catslock.ps1`, for query/toggle from any terminal
+- Named event, `CatslockToggle`, with a relaxed security descriptor so non-admin terminals can signal the elevated C++ process
+- `r.ps1` helper so testing is just `./r.ps1`
 
-It was a useful little Windows systems exercise: hooks, message pumps, UAC, named-event security, state files, and keeping the behavior silent enough that it feels like a real lock rather than a modal app.
+I also wrote up what a cross-platform version would require. The repo stays Windows-only, but the design notes cover why macOS, Linux/X11, Wayland, and WSL each need different backends.
+
+The short version: the shared idea can be cross-platform, but global keyboard interception is always native platform work.
 
 Code:
 https://github.com/cschladetsch/CppCatsLock
-
-Posted unrun. Curious if it works out of the box
