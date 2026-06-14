@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <sddl.h>
 
 #include <atomic>
 #include <filesystem>
@@ -23,6 +24,7 @@ HHOOK g_keyboardHook = nullptr;
 HANDLE g_toggleEvent = nullptr;
 std::atomic<CatslockState> g_state{CatslockState::Idle};
 std::atomic<ULONGLONG> g_lastCapsLockDownTick{0};
+std::atomic<int> g_capsLockCorrectionEvents{0};
 
 std::filesystem::path CatslockStatePath() {
     wchar_t tempPath[MAX_PATH] = {};
@@ -91,9 +93,30 @@ void TransitionCatslock(CatslockState nextState) {
     WriteCatslockState(nextState);
 }
 
+void CorrectCapsLockToggleState() {
+    if ((GetKeyState(VK_CAPITAL) & 0x0001) == 0) {
+        return;
+    }
+
+    INPUT inputs[2] = {};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_CAPITAL;
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = VK_CAPITAL;
+    inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+    g_capsLockCorrectionEvents.store(2, std::memory_order_release);
+    if (SendInput(2, inputs, sizeof(INPUT)) != 2) {
+        g_capsLockCorrectionEvents.store(0, std::memory_order_release);
+    }
+}
+
 void SetCatslockEnabled(bool enabled) {
     g_lastCapsLockDownTick.store(0, std::memory_order_release);
     TransitionCatslock(enabled ? CatslockState::CatslockOn : CatslockState::CatslockOff);
+    if (enabled) {
+        CorrectCapsLockToggleState();
+    }
 }
 
 void ToggleCatslock() {
@@ -129,7 +152,15 @@ LRESULT CALLBACK CatslockKeyboardProc(int code, WPARAM wParam, LPARAM lParam) {
     if (code == HC_ACTION) {
         auto* keyInfo = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
         bool keyDown = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+        bool capsLockCorrection = keyInfo->vkCode == VK_CAPITAL &&
+            (keyInfo->flags & LLKHF_INJECTED) != 0 &&
+            g_capsLockCorrectionEvents.load(std::memory_order_acquire) > 0;
         bool wasCatslockOn = IsCatslockOnState(g_state.load(std::memory_order_acquire));
+
+        if (capsLockCorrection) {
+            g_capsLockCorrectionEvents.fetch_sub(1, std::memory_order_acq_rel);
+            return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
+        }
 
         if (keyDown && keyInfo->vkCode == VK_CAPITAL) {
             HandleCapsLockDown();
@@ -161,12 +192,43 @@ void WatchCatslockToggleEvent() {
     }
 }
 
+HANDLE CreateCatslockToggleEvent() {
+    PSECURITY_DESCRIPTOR securityDescriptor = nullptr;
+    SECURITY_ATTRIBUTES securityAttributes = {};
+    securityAttributes.nLength = sizeof(securityAttributes);
+
+    // Catslock normally runs elevated. This low-integrity label plus broad DACL
+    // lets non-admin terminals open and signal CatslockToggle.
+    constexpr wchar_t kCatslockEventSecurity[] =
+        L"D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;IU)(A;;GA;;;WD)S:(ML;;NW;;;LW)";
+
+    if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            kCatslockEventSecurity,
+            SDDL_REVISION_1,
+            &securityDescriptor,
+            nullptr)) {
+        securityAttributes.lpSecurityDescriptor = securityDescriptor;
+    }
+
+    HANDLE eventHandle = CreateEventW(
+        securityDescriptor == nullptr ? nullptr : &securityAttributes,
+        FALSE,
+        FALSE,
+        kCatslockToggleEventName);
+
+    if (securityDescriptor != nullptr) {
+        LocalFree(securityDescriptor);
+    }
+
+    return eventHandle;
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     WriteCatslockState(CatslockState::Idle);
 
-    g_toggleEvent = CreateEventW(nullptr, FALSE, FALSE, kCatslockToggleEventName);
+    g_toggleEvent = CreateCatslockToggleEvent();
     if (g_toggleEvent == nullptr) {
         MessageBoxW(nullptr, L"Failed to create CatslockToggle event.", L"Catslock", MB_ICONERROR);
         return 1;

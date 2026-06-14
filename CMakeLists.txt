@@ -8,3 +8,5 @@ add_executable(catslock WIN32
 
 target_compile_features(catslock PRIVATE cxx_std_17)
 target_compile_definitions(catslock PRIVATE UNICODE _UNICODE)
+target_link_libraries(catslock PRIVATE Advapi32)
+target_link_options(catslock PRIVATE "LINKER:/MANIFESTUAC:level='requireAdministrator' uiAccess='false'")

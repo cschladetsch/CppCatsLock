@@ -20,6 +20,9 @@ cmake -S . -B build-clang -G Ninja -DCMAKE_CXX_COMPILER=clang++
 cmake --build build-clang
 ```
 
+The executable is linked with a `requireAdministrator` UAC manifest because a
+global low-level keyboard hook is more reliable when Catslock runs elevated.
+
 ## Run
 
 Start the utility:
@@ -29,7 +32,8 @@ Start the utility:
 ```
 
 The executable installs a `WH_KEYBOARD_LL` global keyboard hook and creates the
-named event `CatslockToggle`.
+named event `CatslockToggle`. Catslock runs a standard Win32 message pump on the
+main thread so the low-level keyboard hook remains active.
 
 ## Use
 
@@ -41,7 +45,8 @@ Toggle Catslock from the keyboard:
 While Catslock is on, the hook returns `1` for keyboard events and does not call
 `CallNextHookEx`, so input is swallowed silently. CapsLock events are swallowed
 while Catslock is active so the CapsLock LED state does not change during active
-Catslock operation.
+Catslock operation. On activation, Catslock also corrects the physical CapsLock
+toggle state back to off if the first tap left it enabled.
 
 Query Catslock from any terminal:
 
@@ -64,7 +69,9 @@ Force a toggle from any terminal:
 
 The script rewrites `%TEMP%\catslock.state` and signals `CatslockToggle`. The
 C++ process watches that event on a secondary thread and applies the requested
-state as an out-of-band override.
+state as an out-of-band override. The named event is created with a relaxed
+security descriptor so a non-admin terminal can signal an elevated Catslock
+process.
 
 ## State File
 
