@@ -34,15 +34,60 @@ Start the utility:
 Or build and launch it as a separate process:
 
 ```powershell
-.\r.cmd
+.\r.ps1
 ```
 
 The executable installs a `WH_KEYBOARD_LL` global keyboard hook and creates the
 named event `CatslockToggle`. Catslock runs a standard Win32 message pump on the
 main thread so the low-level keyboard hook remains active.
 
-Catslock is single-instance. If `catslock.exe` is already running, `r.cmd` will
-not start a duplicate process.
+Catslock is single-instance. If `catslock.exe` is already running, the run
+helpers will not start a duplicate process.
+
+## Test
+
+From PowerShell:
+
+```powershell
+.\r.ps1
+```
+
+Approve the UAC prompt. Then verify the helper can see the running process:
+
+```powershell
+Get-Process catslock
+```
+
+Check the current state:
+
+```powershell
+.\catslock.ps1
+```
+
+Toggle through the named-event path:
+
+```powershell
+.\catslock.ps1 -Toggle
+.\catslock.ps1
+.\catslock.ps1 -Toggle
+.\catslock.ps1
+```
+
+The first toggle should print `Catslock: ON`; the second should print
+`Catslock: OFF`. You can also double-tap CapsLock within 500 ms to turn
+Catslock on, then double-tap CapsLock again to turn it off.
+
+Inspect diagnostics:
+
+```powershell
+Get-Content "$env:TEMP\catslock.log" -Tail 20
+```
+
+Stop Catslock after testing:
+
+```powershell
+Start-Process -Verb RunAs -FilePath taskkill.exe -ArgumentList '/IM catslock.exe /F' -Wait
+```
 
 ## Use
 
