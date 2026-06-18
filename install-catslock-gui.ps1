@@ -86,7 +86,7 @@ function Restart-InstallerAsAdmin {
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Catslock Installer"
         Width="620"
-        Height="486"
+        Height="536"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="#f6f8fb"
@@ -213,35 +213,41 @@ function Restart-InstallerAsAdmin {
             </StackPanel>
         </Border>
 
-        <DockPanel Grid.Row="4" Margin="0,18,0,0" LastChildFill="False">
-            <Button x:Name="ElevateButton"
-                    DockPanel.Dock="Left"
-                    Width="142"
-                    Height="36"
-                    Content="Restart as admin"/>
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button x:Name="StartButton"
-                        Width="92"
+        <StackPanel Grid.Row="4" Margin="0,18,0,0">
+            <DockPanel LastChildFill="False">
+                <Button x:Name="ElevateButton"
+                        DockPanel.Dock="Left"
+                        Width="142"
                         Height="36"
-                        Margin="0,0,8,0"
-                        Content="Start"/>
-                <Button x:Name="RemoveButton"
-                        Width="92"
-                        Height="36"
-                        Margin="0,0,8,0"
-                        Content="Remove"/>
-                <Button x:Name="InstallButton"
-                        Width="112"
-                        Height="36"
-                        Margin="0,0,8,0"
-                        Content="Install"/>
+                        Content="Restart as admin"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button x:Name="StartButton"
+                            Width="92"
+                            Height="36"
+                            Margin="0,0,8,0"
+                            Content="Start"/>
+                    <Button x:Name="RemoveButton"
+                            Width="92"
+                            Height="36"
+                            Margin="0,0,8,0"
+                            Content="Remove"/>
+                    <Button x:Name="InstallButton"
+                            Width="112"
+                            Height="36"
+                            Content="Install"/>
+                </StackPanel>
+            </DockPanel>
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Margin="0,14,0,0">
                 <Button x:Name="OkButton"
-                        Width="92"
-                        Height="36"
+                        Width="128"
+                        Height="38"
                         IsDefault="True"
+                        IsCancel="True"
                         Content="OK"/>
             </StackPanel>
-        </DockPanel>
+        </StackPanel>
     </Grid>
 </Window>
 '@
