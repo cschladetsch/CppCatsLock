@@ -1,7 +1,9 @@
 #include <windows.h>
+#include <shellapi.h>
 #include <sddl.h>
 
 #include <atomic>
+#include <cwchar>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -12,6 +14,12 @@ namespace {
 constexpr ULONGLONG kCatslockDoubleTapMs = 500;
 constexpr wchar_t kCatslockToggleEventName[] = L"CatslockToggle";
 constexpr wchar_t kCatslockInstanceMutexName[] = L"CatslockInstance";
+constexpr wchar_t kCatslockTrayWindowClass[] = L"CatslockTrayWindow";
+constexpr UINT kCatslockTrayIconId = 1;
+constexpr UINT kCatslockTrayMessage = WM_APP + 1;
+constexpr UINT kCatslockTrayUpdateMessage = WM_APP + 2;
+constexpr UINT_PTR kCatslockMenuToggle = 1001;
+constexpr UINT_PTR kCatslockMenuExit = 1002;
 
 enum class CatslockState {
     Idle,
@@ -24,6 +32,8 @@ enum class CatslockState {
 HHOOK g_keyboardHook = nullptr;
 HANDLE g_toggleEvent = nullptr;
 HANDLE g_instanceMutex = nullptr;
+HWND g_trayWindow = nullptr;
+HICON g_trayIcon = nullptr;
 std::atomic<CatslockState> g_state{CatslockState::Idle};
 std::atomic<ULONGLONG> g_lastCapsLockDownTick{0};
 std::atomic<int> g_capsLockCorrectionEvents{0};
@@ -113,6 +123,9 @@ void TransitionCatslock(CatslockState nextState) {
     g_state.store(nextState, std::memory_order_release);
     WriteCatslockState(nextState);
     LogCatslock(std::string("state=") + CatslockStateName(nextState));
+    if (g_trayWindow != nullptr) {
+        PostMessageW(g_trayWindow, kCatslockTrayUpdateMessage, 0, 0);
+    }
 }
 
 void CorrectCapsLockToggleState() {
@@ -250,6 +263,151 @@ HANDLE CreateCatslockToggleEvent() {
     return eventHandle;
 }
 
+void FillTrayIconData(NOTIFYICONDATAW* iconData) {
+    *iconData = {};
+    iconData->cbSize = sizeof(*iconData);
+    iconData->hWnd = g_trayWindow;
+    iconData->uID = kCatslockTrayIconId;
+}
+
+void SetTrayTooltip(NOTIFYICONDATAW* iconData) {
+    CatslockState state = g_state.load(std::memory_order_acquire);
+    const wchar_t* tooltip = IsCatslockOnState(state) ? L"Catslock: ON" : L"Catslock: OFF";
+    wcscpy_s(iconData->szTip, tooltip);
+}
+
+void UpdateTrayIcon() {
+    if (g_trayWindow == nullptr) {
+        return;
+    }
+
+    NOTIFYICONDATAW iconData = {};
+    FillTrayIconData(&iconData);
+    iconData.uFlags = NIF_TIP;
+    SetTrayTooltip(&iconData);
+    Shell_NotifyIconW(NIM_MODIFY, &iconData);
+}
+
+bool AddTrayIcon() {
+    if (g_trayWindow == nullptr) {
+        return false;
+    }
+
+    g_trayIcon = LoadIconW(nullptr, IDI_SHIELD);
+    if (g_trayIcon == nullptr) {
+        g_trayIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    }
+
+    NOTIFYICONDATAW iconData = {};
+    FillTrayIconData(&iconData);
+    iconData.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    iconData.uCallbackMessage = kCatslockTrayMessage;
+    iconData.hIcon = g_trayIcon;
+    SetTrayTooltip(&iconData);
+
+    if (!Shell_NotifyIconW(NIM_ADD, &iconData)) {
+        return false;
+    }
+
+    iconData.uVersion = NOTIFYICON_VERSION_4;
+    Shell_NotifyIconW(NIM_SETVERSION, &iconData);
+    return true;
+}
+
+void RemoveTrayIcon() {
+    if (g_trayWindow == nullptr) {
+        return;
+    }
+
+    NOTIFYICONDATAW iconData = {};
+    FillTrayIconData(&iconData);
+    Shell_NotifyIconW(NIM_DELETE, &iconData);
+}
+
+void ShowTrayMenu(HWND window) {
+    HMENU menu = CreatePopupMenu();
+    if (menu == nullptr) {
+        return;
+    }
+
+    CatslockState state = g_state.load(std::memory_order_acquire);
+    AppendMenuW(
+        menu,
+        MF_STRING,
+        kCatslockMenuToggle,
+        IsCatslockOnState(state) ? L"Turn Catslock Off" : L"Turn Catslock On");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING, kCatslockMenuExit, L"Exit");
+
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    SetForegroundWindow(window);
+    TrackPopupMenu(menu, TPM_RIGHTBUTTON, cursor.x, cursor.y, 0, window, nullptr);
+    DestroyMenu(menu);
+}
+
+LRESULT CALLBACK CatslockTrayWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+    case kCatslockTrayMessage:
+        if (LOWORD(lParam) == WM_LBUTTONDBLCLK) {
+            ToggleCatslock();
+            return 0;
+        }
+
+        if (LOWORD(lParam) == WM_CONTEXTMENU || LOWORD(lParam) == WM_RBUTTONUP) {
+            ShowTrayMenu(window);
+            return 0;
+        }
+        break;
+
+    case kCatslockTrayUpdateMessage:
+        UpdateTrayIcon();
+        return 0;
+
+    case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+        case kCatslockMenuToggle:
+            ToggleCatslock();
+            return 0;
+        case kCatslockMenuExit:
+            PostQuitMessage(0);
+            return 0;
+        }
+        break;
+
+    case WM_DESTROY:
+        RemoveTrayIcon();
+        return 0;
+    }
+
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+HWND CreateTrayWindow(HINSTANCE instance) {
+    WNDCLASSW windowClass = {};
+    windowClass.lpfnWndProc = CatslockTrayWindowProc;
+    windowClass.hInstance = instance;
+    windowClass.lpszClassName = kCatslockTrayWindowClass;
+
+    if (!RegisterClassW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+        return nullptr;
+    }
+
+    return CreateWindowExW(
+        0,
+        kCatslockTrayWindowClass,
+        L"Catslock",
+        WS_OVERLAPPED,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        0,
+        0,
+        nullptr,
+        nullptr,
+        instance,
+        nullptr);
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
@@ -269,6 +427,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
 
     WriteCatslockState(CatslockState::Idle);
+
+    g_trayWindow = CreateTrayWindow(instance);
+    if (g_trayWindow == nullptr) {
+        LogCatslock("tray-window=create-failed");
+    } else if (AddTrayIcon()) {
+        LogCatslock("tray-icon=installed");
+    } else {
+        LogCatslock("tray-icon=install-failed");
+    }
 
     g_toggleEvent = CreateCatslockToggleEvent();
     if (g_toggleEvent == nullptr) {
@@ -297,6 +464,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         DispatchMessageW(&message);
     }
 
+    RemoveTrayIcon();
+    if (g_trayWindow != nullptr) {
+        DestroyWindow(g_trayWindow);
+    }
     UnhookWindowsHookEx(g_keyboardHook);
     CloseHandle(g_toggleEvent);
     ReleaseMutex(g_instanceMutex);

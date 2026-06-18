@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$TaskName = 'Catslock',
+    [string]$InstallDir = (Join-Path $env:ProgramFiles 'Catslock'),
+    [switch]$RemoveFiles,
     [switch]$StopProcess
 )
 
@@ -18,4 +20,9 @@ if ($task) {
 if ($StopProcess) {
     Get-Process catslock -ErrorAction SilentlyContinue | Stop-Process -Force
     'Stopped running catslock.exe processes'
+}
+
+if ($RemoveFiles -and (Test-Path -LiteralPath $InstallDir)) {
+    Remove-Item -LiteralPath $InstallDir -Recurse -Force
+    "Removed install directory '$InstallDir'"
 }

@@ -18,6 +18,7 @@ Add-Type -AssemblyName WindowsBase
 $script:TaskName = 'Catslock'
 $script:InstallScript = Join-Path $PSScriptRoot 'install-catslock-autostart.ps1'
 $script:UninstallScript = Join-Path $PSScriptRoot 'uninstall-catslock-autostart.ps1'
+$script:DefaultInstallDir = Join-Path $env:ProgramFiles 'Catslock'
 
 function Test-CurrentUserIsAdmin {
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -85,7 +86,7 @@ function Restart-InstallerAsAdmin {
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Catslock Installer"
         Width="620"
-        Height="440"
+        Height="486"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="#f6f8fb"
@@ -123,6 +124,8 @@ function Restart-InstallerAsAdmin {
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -146,14 +149,26 @@ function Restart-InstallerAsAdmin {
                         Height="34"
                         Margin="0,8,0,0"
                         Content="Browse"/>
+                <TextBlock Grid.Row="2"
+                           Grid.ColumnSpan="2"
+                           Margin="0,14,0,0"
+                           Text="Install location"
+                           FontWeight="SemiBold"
+                           Foreground="#111827"/>
+                <TextBox x:Name="InstallDirTextBox"
+                         Grid.Row="3"
+                         Grid.ColumnSpan="2"
+                         Height="34"
+                         Margin="0,8,0,0"
+                         VerticalContentAlignment="Center"/>
                 <CheckBox x:Name="StartNowCheckBox"
-                          Grid.Row="2"
+                          Grid.Row="4"
                           Grid.ColumnSpan="2"
                           Margin="0,14,0,0"
                           Content="Start Catslock after installing"
                           IsChecked="True"/>
                 <TextBlock x:Name="AdminTextBlock"
-                           Grid.Row="3"
+                           Grid.Row="5"
                            Grid.ColumnSpan="2"
                            Margin="0,14,0,0"
                            TextWrapping="Wrap"
@@ -229,6 +244,7 @@ $reader = [System.Xml.XmlNodeReader]::new($xaml)
 $script:Window = [Windows.Markup.XamlReader]::Load($reader)
 
 $exePathTextBox = $script:Window.FindName('ExePathTextBox')
+$installDirTextBox = $script:Window.FindName('InstallDirTextBox')
 $browseButton = $script:Window.FindName('BrowseButton')
 $startNowCheckBox = $script:Window.FindName('StartNowCheckBox')
 $adminTextBlock = $script:Window.FindName('AdminTextBlock')
@@ -257,6 +273,7 @@ function Update-AdminState {
 }
 
 $exePathTextBox.Text = Find-DefaultCatslockExe
+$installDirTextBox.Text = $script:DefaultInstallDir
 $statusTextBlock.Text = Get-CatslockTaskStatus
 Update-AdminState
 
@@ -292,6 +309,7 @@ $installButton.Add_Click({
         $arguments = @{
             TaskName = $script:TaskName
             ExePath = $exePathTextBox.Text
+            InstallDir = $installDirTextBox.Text
         }
         if (-not $startNowCheckBox.IsChecked) {
             $arguments.NoStart = $true

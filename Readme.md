@@ -58,15 +58,22 @@ Or use the GUI installer:
 .\install-catslock-gui.ps1
 ```
 
-The installer creates a scheduled task named `Catslock` that runs
-`catslock.exe` in the interactive user session with highest privileges. This is
-intentional: a Windows Service runs in Session 0 and cannot reliably receive the
-interactive desktop keyboard hook used by Catslock.
+The installer copies Catslock into `C:\Program Files\Catslock` and creates a
+scheduled task named `Catslock` that runs `catslock.exe` in the interactive user
+session with highest privileges. This is intentional: a Windows Service runs in
+Session 0 and cannot reliably receive the interactive desktop keyboard hook or
+show the notification-area icon used by Catslock.
 
 If the executable is not in one of the standard build paths, pass it explicitly:
 
 ```powershell
 .\install-catslock-autostart.ps1 -ExePath C:\Tools\Catslock\catslock.exe
+```
+
+Choose a custom install directory:
+
+```powershell
+.\install-catslock-autostart.ps1 -InstallDir C:\Tools\Catslock
 ```
 
 Remove the autostart task:
@@ -79,6 +86,12 @@ Remove the task and stop the running process:
 
 ```powershell
 .\uninstall-catslock-autostart.ps1 -StopProcess
+```
+
+Remove the installed files too:
+
+```powershell
+.\uninstall-catslock-autostart.ps1 -StopProcess -RemoveFiles
 ```
 
 ## Test
@@ -163,6 +176,9 @@ C++ process watches that event on a secondary thread and applies the requested
 state as an out-of-band override. The named event is created with a relaxed
 security descriptor so a non-admin terminal can signal an elevated Catslock
 process.
+
+Catslock also adds a notification-area icon while running. Double-click the tray
+icon to toggle Catslock, or right-click it to toggle or exit.
 
 ## State File
 

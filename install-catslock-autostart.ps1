@@ -2,6 +2,7 @@
 param(
     [string]$TaskName = 'Catslock',
     [string]$ExePath,
+    [string]$InstallDir = (Join-Path $env:ProgramFiles 'Catslock'),
     [switch]$NoStart
 )
 
@@ -33,8 +34,32 @@ function Resolve-CatslockExe {
     throw 'Could not find catslock.exe. Build Catslock first or pass -ExePath.'
 }
 
-$catslockExe = Resolve-CatslockExe -RequestedPath $ExePath
-$workingDirectory = Split-Path -Parent $catslockExe
+$sourceCatslockExe = Resolve-CatslockExe -RequestedPath $ExePath
+$resolvedInstallDir = (New-Item -ItemType Directory -Path $InstallDir -Force).FullName
+$catslockExe = Join-Path $resolvedInstallDir 'catslock.exe'
+
+if (-not [StringComparer]::OrdinalIgnoreCase.Equals($sourceCatslockExe, $catslockExe)) {
+    Copy-Item -LiteralPath $sourceCatslockExe -Destination $catslockExe -Force
+}
+
+foreach ($supportFile in @(
+    'catslock.ps1',
+    'install-catslock-autostart.ps1',
+    'install-catslock-gui.ps1',
+    'uninstall-catslock-autostart.ps1',
+    'Readme.md'
+)) {
+    $sourcePath = Join-Path $PSScriptRoot $supportFile
+    if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+        $destinationPath = Join-Path $resolvedInstallDir $supportFile
+        $resolvedSourcePath = (Resolve-Path -LiteralPath $sourcePath).ProviderPath
+        if (-not [StringComparer]::OrdinalIgnoreCase.Equals($resolvedSourcePath, $destinationPath)) {
+            Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+        }
+    }
+}
+
+$workingDirectory = $resolvedInstallDir
 $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 $action = New-ScheduledTaskAction -Execute $catslockExe -WorkingDirectory $workingDirectory
