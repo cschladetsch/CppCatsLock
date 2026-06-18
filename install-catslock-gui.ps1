@@ -233,7 +233,13 @@ function Restart-InstallerAsAdmin {
                 <Button x:Name="InstallButton"
                         Width="112"
                         Height="36"
+                        Margin="0,0,8,0"
                         Content="Install"/>
+                <Button x:Name="OkButton"
+                        Width="92"
+                        Height="36"
+                        IsDefault="True"
+                        Content="OK"/>
             </StackPanel>
         </DockPanel>
     </Grid>
@@ -254,6 +260,7 @@ $elevateButton = $script:Window.FindName('ElevateButton')
 $startButton = $script:Window.FindName('StartButton')
 $removeButton = $script:Window.FindName('RemoveButton')
 $installButton = $script:Window.FindName('InstallButton')
+$okButton = $script:Window.FindName('OkButton')
 
 function Set-InstallerOutput {
     param([string]$Message)
@@ -346,6 +353,10 @@ $startButton.Add_Click({
     } catch {
         Set-InstallerOutput $_.Exception.Message
     }
+})
+
+$okButton.Add_Click({
+    $script:Window.Close()
 })
 
 [void]$script:Window.ShowDialog()
