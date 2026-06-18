@@ -44,6 +44,43 @@ main thread so the low-level keyboard hook remains active.
 Catslock is single-instance. If `catslock.exe` is already running, the run
 helpers will not start a duplicate process.
 
+## Autostart
+
+Install Catslock to start automatically at user logon:
+
+```powershell
+.\install-catslock-autostart.ps1
+```
+
+Or use the GUI installer:
+
+```powershell
+.\install-catslock-gui.ps1
+```
+
+The installer creates a scheduled task named `Catslock` that runs
+`catslock.exe` in the interactive user session with highest privileges. This is
+intentional: a Windows Service runs in Session 0 and cannot reliably receive the
+interactive desktop keyboard hook used by Catslock.
+
+If the executable is not in one of the standard build paths, pass it explicitly:
+
+```powershell
+.\install-catslock-autostart.ps1 -ExePath C:\Tools\Catslock\catslock.exe
+```
+
+Remove the autostart task:
+
+```powershell
+.\uninstall-catslock-autostart.ps1
+```
+
+Remove the task and stop the running process:
+
+```powershell
+.\uninstall-catslock-autostart.ps1 -StopProcess
+```
+
 ## Test
 
 From PowerShell:
