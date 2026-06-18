@@ -44,6 +44,7 @@ if (-not [StringComparer]::OrdinalIgnoreCase.Equals($sourceCatslockExe, $catsloc
 
 foreach ($supportFile in @(
     'catslock.ps1',
+    'Install Catslock.cmd',
     'install-catslock-autostart.ps1',
     'install-catslock-gui.ps1',
     'uninstall-catslock-autostart.ps1',

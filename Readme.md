@@ -48,6 +48,18 @@ helpers will not start a duplicate process.
 
 Install Catslock to start automatically at user logon:
 
+1. Download the latest `catslock-*-windows-x64.zip` release.
+2. Extract the zip.
+3. Double-click `Install Catslock.cmd`.
+4. Click `Restart as admin` if prompted, then click `Install`.
+
+The double-click launcher runs the PowerShell GUI installer with the correct
+PowerShell flags. Double-clicking `install-catslock-gui.ps1` directly is not
+recommended because Windows usually opens `.ps1` files in an editor instead of
+running them.
+
+PowerShell install is also available:
+
 ```powershell
 .\install-catslock-autostart.ps1
 ```
@@ -240,4 +252,5 @@ stateDiagram-v2
 
 - `src/catslock.cpp`: Windows hook utility and named-event watcher.
 - `catslock.ps1`: State query and out-of-band toggle helper.
+- `Install Catslock.cmd`: Double-click launcher for the GUI installer.
 - `CMakeLists.txt`: Standalone CMake build.
